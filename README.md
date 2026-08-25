@@ -2,10 +2,15 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Vanilla JS](https://img.shields.io/badge/Vanilla-JavaScript-f7df1e.svg)](app.js)
+[![GitHub Pages](https://img.shields.io/badge/在线体验-GitHub%20Pages-3c8527.svg)](https://flowersauce.github.io/Minecraft_CaneSolver/)
 
 Minecraft 甘蔗最大化种植布局网页工具。支持矩形与圆形区域，自动计算水源位置，并以俯视方块图展示种植方案。项目使用原生 HTML、CSS 和 JavaScript，无需构建或安装依赖。
 
 > 本项目并非 Minecraft 官方产品，也未经 Mojang Studios 或 Microsoft 认可。
+
+## 在线体验
+
+访问：<https://flowersauce.github.io/Minecraft_CaneSolver/>
 
 ## 本地运行
 
