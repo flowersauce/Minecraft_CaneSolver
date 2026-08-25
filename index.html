@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#10140f" />
+  <meta name="description" content="计算矩形或圆形区域内 Minecraft 甘蔗的最大化种植布局。" />
+  <title>Minecraft CaneSolver · 甘蔗布局规划器</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Minecraft CaneSolver 首页">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span><strong>MINECRAFT <span>CANESOLVER</span></strong><small>甘蔗最大化种植求解器</small></span>
+    </a>
+  </header>
+
+  <main id="top">
+    <section class="planner-shell" id="planner">
+      <aside class="control-panel">
+        <div class="panel-heading">
+          <span class="step-number" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span>
+          <div><h2>区域参数</h2><p>AREA PARAMETERS</p></div>
+        </div>
+
+        <div class="shape-switch" aria-label="区域形状">
+          <button type="button" class="active" data-shape="rectangle">矩形</button>
+          <button type="button" data-shape="circle">圆形</button>
+        </div>
+
+        <div id="rectangleFields">
+          <div class="field-group">
+            <div class="field-label"><label for="widthInput">区域宽度</label><span>横向 / X</span></div>
+            <div class="number-control">
+              <button type="button" data-step="widthInput" data-delta="-1" aria-label="减少宽度">−</button>
+              <input id="widthInput" type="number" min="1" max="32" value="8" />
+              <span>格</span>
+              <button type="button" data-step="widthInput" data-delta="1" aria-label="增加宽度">＋</button>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-label"><label for="heightInput">区域长度</label><span>纵向 / Z</span></div>
+            <div class="number-control">
+              <button type="button" data-step="heightInput" data-delta="-1" aria-label="减少长度">−</button>
+              <input id="heightInput" type="number" min="1" max="32" value="8" />
+              <span>格</span>
+              <button type="button" data-step="heightInput" data-delta="1" aria-label="增加长度">＋</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="circleFields" hidden>
+          <div class="field-group">
+            <div class="field-label"><label for="diameterInput">圆形直径</label><span>圆心 X0 / Z0</span></div>
+            <div class="number-control">
+              <button type="button" data-step="diameterInput" data-delta="-1" aria-label="减少直径">−</button>
+              <input id="diameterInput" type="number" min="1" max="32" step="1" value="16" />
+              <span>格</span>
+              <button type="button" data-step="diameterInput" data-delta="1" aria-label="增加直径">＋</button>
+            </div>
+          </div>
+        </div>
+
+        <button class="calculate-button" id="calculateBtn" type="button">
+          <svg viewBox="0 0 24 24"><path d="M4 7h10M4 12h16M4 17h10M17 4l3 3-3 3"/></svg>
+          <span>生成最优布局<small>CALCULATE LAYOUT</small></span>
+        </button>
+      </aside>
+
+      <section class="result-panel">
+        <div class="canvas-toolbar" id="canvasToolbar">
+          <div class="legend">
+            <span><i class="legend-cane"></i>甘蔗种植位</span>
+            <span><i class="legend-water"></i>水源方块</span>
+            <span class="dimensions" id="dimensionLabel">8 W × 8 L</span>
+          </div>
+          <div class="canvas-actions">
+            <button type="button" id="exportBtn" title="导出 PNG"><svg viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 19h14"/></svg><span>导出 PNG</span></button>
+            <button id="fitBtn" class="fit" type="button" title="自动缩放至最大可见尺寸">
+              <svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+              <span>自适应放大</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid-viewport" id="gridViewport" title="使用鼠标滚轮缩放布局">
+          <div class="grid-wrap" id="gridWrap">
+            <div class="axis-layout" id="axisLayout">
+              <div class="axis-corner">X / Z</div>
+              <div class="axis-x" id="axisX" aria-label="X 坐标轴"></div>
+              <div class="axis-z" id="axisZ" aria-label="Z 坐标轴"></div>
+              <div class="block-grid" id="blockGrid" role="img" aria-label="甘蔗农场方块布局"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="stats-panel">
+        <div class="panel-heading stats-title">
+          <span class="step-number" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V9h3v10H5Zm6 0V5h3v14h-3Zm6 0v-7h3v7h-3Z"/></svg></span>
+          <div><h2>统计信息</h2><p>LAYOUT STATS</p></div>
+        </div>
+        <div class="stats-strip" id="statsStrip">
+          <article class="primary-stat"><span class="stat-icon cane-icon"><i></i><i></i><i></i></span><div><small>最大种植量</small><strong id="caneCount">84</strong><em>株甘蔗</em></div></article>
+          <article><small>土地利用率</small><strong id="efficiency">77.8<em>%</em></strong><div class="mini-track"><i id="efficiencyBar"></i></div></article>
+          <article><small>所需水源</small><strong id="waterCount">24<em>格</em></strong><span>每株均临水</span></article>
+        </div>
+      </aside>
+    </section>
+
+  </main>
+
+  <footer><span>Minecraft CaneSolver</span><span>Java & Bedrock compatible · 非 Minecraft 官方产品</span></footer>
+  <div class="toast" id="toast" role="status" aria-live="polite">已复制</div>
+
+  <script src="app.js"></script>
+</body>
+</html>
