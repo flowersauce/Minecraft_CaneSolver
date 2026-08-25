@@ -24,6 +24,7 @@
     water: [],
     exact: true,
     cellSize: 38,
+    gapSize: 2,
     timer: null
   };
 
@@ -38,7 +39,7 @@
 
   function clampInput(input) {
     const value = Number.parseInt(input.value, 10) || 1;
-    input.value = Math.max(1, Math.min(32, value));
+    input.value = Math.max(1, Math.min(128, value));
     return Number(input.value);
   }
 
@@ -119,33 +120,32 @@
     return result;
   }
 
-  function validLayout(water, width, height, active) {
-    for (let index = 0; index < water.length; index++) {
-      if (!active[index] || water[index]) continue;
-      if (!neighbors(index, width, height).some((neighbor) => water[neighbor])) return false;
-    }
-    return true;
-  }
-
   function completeAndPrune(seed, width, height, active) {
     const total = width * height;
     const water = seed.slice();
+    const dominated = new Uint8Array(total);
+    let uncoveredCount = 0;
 
-    while (!validLayout(water, width, height, active)) {
-      const uncovered = new Set();
-      for (let index = 0; index < total; index++) {
-        if (active[index] && !water[index] && !neighbors(index, width, height).some((n) => water[n])) uncovered.add(index);
+    for (let index = 0; index < total; index++) {
+      if (!active[index]) continue;
+      if (water[index] || neighbors(index, width, height).some((neighbor) => water[neighbor])) {
+        dominated[index] = 1;
+      } else {
+        uncoveredCount++;
       }
+    }
 
-      let bestIndex = 0;
+    // Repair uncovered boundary cells. Tracking domination incrementally avoids
+    // rescanning the complete grid after every inserted water source.
+    while (uncoveredCount > 0) {
+      let bestIndex = -1;
       let bestScore = -1;
       for (let candidate = 0; candidate < total; candidate++) {
         if (!active[candidate] || water[candidate]) continue;
         let score = 0;
         for (const covered of neighbors(candidate, width, height, true)) {
-          if (uncovered.has(covered)) score++;
+          if (active[covered] && !dominated[covered]) score++;
         }
-        // Prefer edges on ties to repair finite-grid boundaries cleanly.
         const x = candidate % width;
         const z = Math.floor(candidate / width);
         const edgeBonus = (x === 0 || x === width - 1 || z === 0 || z === height - 1) ? 0.01 : 0;
@@ -154,16 +154,40 @@
           bestIndex = candidate;
         }
       }
+      if (bestIndex < 0) break;
       water[bestIndex] = true;
+      for (const covered of neighbors(bestIndex, width, height, true)) {
+        if (active[covered] && !dominated[covered]) {
+          dominated[covered] = 1;
+          uncoveredCount--;
+        }
+      }
     }
 
-    const selected = water.map((isWater, index) => isWater ? index : -1).filter((index) => index >= 0);
+    // Maintain adjacent-water counts so each removal check only touches the
+    // selected cell and its four neighbors instead of scanning the full grid.
+    const adjacentWater = new Uint16Array(total);
+    const selected = [];
+    for (let index = 0; index < total; index++) {
+      if (!water[index]) continue;
+      selected.push(index);
+      for (const neighbor of neighbors(index, width, height)) {
+        if (active[neighbor]) adjacentWater[neighbor]++;
+      }
+    }
+
     for (let pass = 0; pass < 2; pass++) {
       const order = pass === 0 ? selected : selected.slice().reverse();
       for (const index of order) {
-        if (!water[index]) continue;
+        if (!water[index] || adjacentWater[index] === 0) continue;
+        const canRemove = neighbors(index, width, height).every((neighbor) =>
+          !active[neighbor] || water[neighbor] || adjacentWater[neighbor] > 1
+        );
+        if (!canRemove) continue;
         water[index] = false;
-        if (!validLayout(water, width, height, active)) water[index] = true;
+        for (const neighbor of neighbors(index, width, height)) {
+          if (active[neighbor]) adjacentWater[neighbor]--;
+        }
       }
     }
     return water;
@@ -173,7 +197,10 @@
   // Five phases and both orientations are tested, then boundary gaps are repaired.
   function solveLarge(width, height, active) {
     const total = width * height;
-    const candidates = [completeAndPrune(new Array(total).fill(false), width, height, active)];
+    const candidates = [];
+    // The empty-seed greedy pass is useful on smaller grids but grows
+    // quadratically; perfect-code seeds are sufficient for very large grids.
+    if (total <= 4096) candidates.push(completeAndPrune(new Array(total).fill(false), width, height, active));
     for (let orientation = 0; orientation < 2; orientation++) {
       for (let phase = 0; phase < 5; phase++) {
         const seed = new Array(total).fill(false);
@@ -203,7 +230,7 @@
   }
 
   function normalizeDiameter() {
-    const value = Math.max(1, Math.min(32, Number.parseInt(diameterInput.value, 10) || 1));
+    const value = Math.max(1, Math.min(128, Number.parseInt(diameterInput.value, 10) || 1));
     diameterInput.value = value;
     return value;
   }
@@ -235,8 +262,10 @@
     blockGrid.innerHTML = "";
     axisX.innerHTML = "";
     axisZ.innerHTML = "";
+    state.gapSize = Math.max(state.width, state.height) > 64 ? 1 : 2;
     axisLayout.style.setProperty("--cols", state.width);
     axisLayout.style.setProperty("--rows", state.height);
+    axisLayout.style.setProperty("--gap", `${state.gapSize}px`);
     axisLayout.style.setProperty("--ground-1", MUD_COLORS[0]);
     axisLayout.style.setProperty("--ground-2", MUD_COLORS[1]);
     axisLayout.style.setProperty("--ground-3", MUD_COLORS[2]);
@@ -291,9 +320,21 @@
     return { x: axisValue(x), z: axisValue(z) };
   }
 
+  function updateAxisDensity() {
+    const step = Math.max(1, Math.ceil(22 / (state.cellSize + state.gapSize)));
+    [axisX, axisZ].forEach((axis) => {
+      [...axis.children].forEach((label, index, labels) => {
+        const visible = label.classList.contains("origin") || index % step === 0 || index === labels.length - 1;
+        label.style.visibility = visible ? "visible" : "hidden";
+      });
+    });
+  }
+
   function setCellSize(size) {
-    state.cellSize = Math.max(8, Math.min(1024, Math.round(size)));
+    state.cellSize = Math.max(1, Math.min(1024, Math.round(size)));
     axisLayout.style.setProperty("--cell", `${state.cellSize}px`);
+    axisLayout.classList.toggle("compact-blocks", state.cellSize < 10);
+    updateAxisDensity();
   }
 
   function updateViewportSize() {
@@ -320,8 +361,8 @@
     const safety = 10;
     const horizontalAxisReserve = 42 * 2;
     const verticalAxisReserve = 32 * 2;
-    const fitWidth = (viewport.clientWidth - 56 - horizontalAxisReserve - 12 - (state.width - 1) * 2 - safety) / state.width;
-    const fitHeight = (viewport.clientHeight - 56 - verticalAxisReserve - 12 - (state.height - 1) * 2 - safety) / state.height;
+    const fitWidth = (viewport.clientWidth - 56 - horizontalAxisReserve - 12 - (state.width - 1) * state.gapSize - safety) / state.width;
+    const fitHeight = (viewport.clientHeight - 56 - verticalAxisReserve - 12 - (state.height - 1) * state.gapSize - safety) / state.height;
     setCellSize(Math.floor(Math.min(1024, fitWidth, fitHeight)));
     window.requestAnimationFrame(centerGraphic);
   }
@@ -355,8 +396,8 @@
   }
 
   function exportPng() {
-    const cell = Math.max(28, Math.min(52, Math.floor(1000 / state.width)));
-    const gap = 2;
+    const cell = Math.max(6, Math.min(52, Math.floor(1600 / state.width)));
+    const gap = cell < 10 ? 1 : 2;
     const gridPadding = 6;
     const horizontalAxisReserve = 42;
     const verticalAxisReserve = 32;
@@ -409,16 +450,20 @@
     ctx.stroke();
     ctx.font = '11px "Mojangles", "GNU Unifont", monospace';
     ctx.textAlign = "center";
+    const axisStep = Math.max(1, Math.ceil(22 / (cell + gap)));
     for (let x = 0; x < state.width; x++) {
       const centerX = gridX + x * (cell + gap) + cell / 2;
       const value = axisValue(x);
       const isOrigin = value === (state.shape === "circle" ? 0 : 1);
-      if (isOrigin) {
-        ctx.fillStyle = "#3c8527";
-        ctx.fillRect(centerX - 11, axisLineY - 27, 22, 22);
+      const showLabel = isOrigin || x % axisStep === 0 || x === state.width - 1;
+      if (showLabel) {
+        if (isOrigin) {
+          ctx.fillStyle = "#3c8527";
+          ctx.fillRect(centerX - 11, axisLineY - 27, 22, 22);
+        }
+        ctx.fillStyle = isOrigin ? "#fff" : "#a9afa5";
+        ctx.fillText(String(value), centerX, axisLineY - 11);
       }
-      ctx.fillStyle = isOrigin ? "#fff" : "#a9afa5";
-      ctx.fillText(String(value), centerX, axisLineY - 11);
       ctx.fillStyle = "#697064";
       ctx.fillRect(centerX, axisLineY - 5, 1, 5);
     }
@@ -428,12 +473,15 @@
       const labelX = axisLineX - 22;
       const value = axisValue(z);
       const isOrigin = value === (state.shape === "circle" ? 0 : 1);
-      if (isOrigin) {
-        ctx.fillStyle = "#3c8527";
-        ctx.fillRect(labelX - 11, centerY - 11, 22, 22);
+      const showLabel = isOrigin || z % axisStep === 0 || z === state.height - 1;
+      if (showLabel) {
+        if (isOrigin) {
+          ctx.fillStyle = "#3c8527";
+          ctx.fillRect(labelX - 11, centerY - 11, 22, 22);
+        }
+        ctx.fillStyle = isOrigin ? "#fff" : "#a9afa5";
+        ctx.fillText(String(value), labelX, centerY + 4);
       }
-      ctx.fillStyle = isOrigin ? "#fff" : "#a9afa5";
-      ctx.fillText(String(value), labelX, centerY + 4);
       ctx.fillStyle = "#697064";
       ctx.fillRect(axisLineX - 5, centerY, 5, 1);
     }
